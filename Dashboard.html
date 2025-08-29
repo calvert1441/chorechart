@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Family Chore Tracker</title>
+<style>
+  body {
+    font-family: "Comic Sans MS", cursive, sans-serif;
+    background: linear-gradient(135deg, #ffecd2, #fcb69f);
+    margin: 0;
+    padding: 0;
+    color: #333;
+  }
+  header {
+    background: linear-gradient(90deg, #42a5f5, #478ed1);
+    color: white;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 4px 8px rgba(0,0,0,.3);
+  }
+  header h1 {
+    font-size: 2.2rem;
+    margin: 0;
+  }
+  main {
+    padding: 1rem;
+    max-width: 1000px;
+    margin: auto;
+  }
+  h2 {
+    margin-top: 2rem;
+    text-align: center;
+    color: #444;
+    text-shadow: 1px 1px 2px #fff;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  th, td {
+    padding: .7rem;
+    border: 1px solid #ddd;
+    text-align: center;
+    font-size: 1rem;
+  }
+  th {
+    background: #ffcc80;
+    font-size: 1.1rem;
+  }
+  .task { text-align:left; }
+  .complete {
+    background: #66bb6a;
+    color: white;
+    border: none;
+    padding: .4rem .8rem;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: .9rem;
+    transition: transform 0.2s, background 0.3s;
+  }
+  .complete:hover {
+    background: #43a047;
+    transform: scale(1.1);
+  }
+  .reset {
+    background: #ef5350;
+    color: white;
+    border: none;
+    padding: .5rem 1.2rem;
+    border-radius: 20px;
+    cursor: pointer;
+    margin: 0.5rem;
+    transition: background 0.3s;
+  }
+  .reset:hover {
+    background: #c62828;
+  }
+  #confetti {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+  }
+  .reward-btn {
+    background: #ff9800;
+    color: white;
+    border: none;
+    padding: .5rem 1rem;
+    border-radius: 20px;
+    cursor: pointer;
+    margin: .3rem;
+    font-size: 0.9rem;
+    transition: transform 0.2s;
+  }
+  .reward-btn:hover {
+    background: #f57c00;
+    transform: scale(1.1);
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🌟 Family Chore Tracker 🌟</h1>
+    <button class="reset" id="resetDay">Reset Day</button>
+    <button class="reset" id="resetWeekly">Reset Weekly</button>
+  </header>
+  <main>
+    <section>
+      <h2>🧹 Chore Chart</h2>
+      <table id="choreTable">
+        <thead>
+          <tr>
+            <th>Child</th>
+            <th>Chore</th>
+            <th>⭐ Points</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="choreRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>🏆 Leaderboard</h2>
+      <table>
+        <thead>
+          <tr><th>Child</th><th>Running Balance ⭐</th><th>Weekly Points</th><th>Cash Value</th></tr>
+        </thead>
+        <tbody id="leaderRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>🎁 Reward Store</h2>
+      <table>
+        <thead>
+          <tr><th>Child</th><th>Available ⭐</th><th>Cash Value</th><th>Action</th></tr>
+        </thead>
+        <tbody id="rewardRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>📜 History</h2>
+      <table>
+        <thead>
+          <tr><th>When</th><th>Child</th><th>Chore</th><th>⭐</th></tr>
+        </thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+const KIDS = [
+  { name: "Alice" },
+  { name: "Ben" },
+  { name: "Chloe" }
+];
+const CHORES = [
+  { child: "Alice", task: "Make Bed", points: 1 },
+  { child: "Alice", task: "Dishes", points: 2 },
+  { child: "Ben", task: "Take Out Trash", points: 1 },
+  { child: "Ben", task: "Feed Dog", points: 2 },
+  { child: "Chloe", task: "Vacuum", points: 3 },
+  { child: "Chloe", task: "Set Table", points: 1 }
+];
+const STAR_VALUE = 0.5;
+
+let state = {
+  runningBalance: Object.fromEntries(KIDS.map(k=>[k.name, 0])),
+  weeklyPoints:   Object.fromEntries(KIDS.map(k=>[k.name, 0])),
+  history: [],
+  completedChores: {},
+  lastReset: new Date().toDateString()
+};
+
+function saveState(){ localStorage.setItem("choreState", JSON.stringify(state)); }
+function loadState(){ const s = localStorage.getItem("choreState"); if(s) state = JSON.parse(s); }
+function checkDailyReset(){
+  const today = new Date().toDateString();
+  if(state.lastReset !== today){
+    state.completedChores = {};
+    state.lastReset = today;
+    saveState();
+  }
+}
+
+function renderChores(){
+  const tbody = document.getElementById("choreRows");
+  tbody.innerHTML = "";
+  for(const c of CHORES){
+    const key = c.child + "-" + c.task;
+    if(state.completedChores[key]) continue;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${c.child}</td>
+      <td class="task">${c.task}</td>
+      <td>${c.points}</td>
+      <td><button class="complete" data-child="${c.child}" data-task="${c.task}" data-p="${c.points}">Complete ✨</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll(".complete").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{
+      const child = e.currentTarget.dataset.child;
+      const task  = e.currentTarget.dataset.task;
+      const pts   = Number(e.currentTarget.dataset.p);
+      onCompleteChore({child, task, points: pts});
+    });
+  });
+}
+
+function renderLeaderboard(){
+  const tbody = document.getElementById("leaderRows");
+  tbody.innerHTML = "";
+  for(const kid of KIDS){
+    const stars = state.runningBalance[kid.name]||0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${kid.name}</td>
+                    <td>${stars}</td>
+                    <td>${state.weeklyPoints[kid.name]||0}</td>
+                    <td>$${(stars * STAR_VALUE).toFixed(2)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderRewardStore(){
+  const tbody = document.getElementById("rewardRows");
+  tbody.innerHTML = "";
+  for(const kid of KIDS){
+    const stars = state.runningBalance[kid.name]||0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${kid.name}</td>
+                    <td>${stars}</td>
+                    <td>$${(stars * STAR_VALUE).toFixed(2)}</td>
+                    <td><button class="reward-btn" data-child="${kid.name}">Cash Out 💰</button></td>`;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll(".reward-btn").forEach(btn=>{
+    btn.addEventListener("click",(e)=>{
+      const child = e.currentTarget.dataset.child;
+      const stars = state.runningBalance[child]||0;
+      if(stars>0){
+        alert(`${child} cashed out $${(stars*STAR_VALUE).toFixed(2)}! 🎉`);
+        state.runningBalance[child] = 0;
+        saveState();
+        renderLeaderboard();
+        renderRewardStore();
+      }
+    });
+  });
+}
+
+function renderHistory(){
+  const tbody = document.getElementById("historyRows");
+  tbody.innerHTML = "";
+  for(const h of state.history.slice(-20).reverse()){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${new Date(h.time).toLocaleString()}</td>
+                    <td>${h.child}</td>
+                    <td>${h.task}</td>
+                    <td>${h.points}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function onCompleteChore(chore){
+  state.runningBalance[chore.child] += chore.points;
+  state.weeklyPoints[chore.child]   += chore.points;
+  state.history.push({ time: Date.now(), ...chore });
+  state.completedChores[chore.child + "-" + chore.task] = true;
+  saveState();
+  renderChores();
+  renderLeaderboard();
+  renderRewardStore();
+  renderHistory();
+  launchConfetti();
+}
+
+function resetDay(){
+  state.completedChores = {};
+  state.lastReset = new Date().toDateString();
+  saveState();
+  renderChores();
+}
+function resetWeekly(){
+  state.weeklyPoints = Object.fromEntries(KIDS.map(k=>[k.name,0]));
+  saveState();
+  renderLeaderboard();
+}
+
+function init(){
+  loadState();
+  checkDailyReset();
+  renderChores();
+  renderLeaderboard();
+  renderRewardStore();
+  renderHistory();
+  document.getElementById("resetDay").addEventListener("click", resetDay);
+  document.getElementById("resetWeekly").addEventListener("click", resetWeekly);
+}
+init();
+
+/* 🎉 Confetti Animation */
+const confettiCanvas = document.getElementById("confetti");
+const ctx = confettiCanvas.getContext("2d");
+confettiCanvas.width = window.innerWidth;
+confettiCanvas.height = window.innerHeight;
+let confetti = [];
+
+function launchConfetti(){
+  confetti = [];
+  for(let i=0;i<150;i++){
+    confetti.push({
+      x: Math.random()*confettiCanvas.width,
+      y: Math.random()*confettiCanvas.height - confettiCanvas.height,
+      r: Math.random()*6+4,
+      d: Math.random()*150+50,
+      color: `hsl(${Math.random()*360},100%,50%)`,
+      tilt: Math.random()*10-10
+    });
+  }
+  animateConfetti();
+  setTimeout(()=>{ confetti=[]; }, 3000);
+}
+function animateConfetti(){
+  ctx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
+  confetti.forEach(c=>{
+    ctx.beginPath();
+    ctx.fillStyle=c.color;
+    ctx.fillRect(c.x,c.y,c.r,c.r);
+    ctx.fill();
+    c.y += 3;
+    c.x += Math.sin(c.y/20);
+  });
+  if(confetti.length>0) requestAnimationFrame(animateConfetti);
+}
+</script>
+</body>
+</html>
